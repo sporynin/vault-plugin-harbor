@@ -1,4 +1,4 @@
-package harbor
+package registry
 
 import (
 	"context"

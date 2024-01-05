@@ -1,4 +1,4 @@
-package harbor
+package registry
 
 import (
 	"context"
@@ -84,7 +84,17 @@ func (b *harborBackend) createCreds(
 		dn := re.ReplaceAllString(req.DisplayName, "-")
 		displayName = fmt.Sprintf("%s.", dn)
 	}
-
+	//logger := hclog.New(&hclog.LoggerOptions{})
+	for i, num := range b.Secrets {
+		b.Logger().Info(fmt.Sprintf("found: %s, num: %d", num.Type, i))
+	}
+	creds2, err := req.Storage.List(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("error creating Harbor robot account: %w", err)
+	}
+	for i, num := range creds2 {
+		b.Logger().Info(fmt.Sprintf("found: %s, num: %d", num, i))
+	}
 	robotAccountName := fmt.Sprintf("vault.%s.%s%d", roleName, displayName, time.Now().UnixNano())
 
 	robotAccount, err := b.createRobotAccount(ctx, req.Storage, robotAccountName, role)

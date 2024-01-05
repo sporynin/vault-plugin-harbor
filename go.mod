@@ -1,4 +1,4 @@
-module github.com/manhtukhang/vault-plugin-harbor
+module vault-engine-registry
 
 go 1.19
 

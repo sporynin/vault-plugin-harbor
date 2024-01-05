@@ -2,8 +2,7 @@ package main
 
 import (
 	"os"
-
-	harbor "github.com/manhtukhang/vault-plugin-harbor"
+	registry "vault-engine-registry"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/api"
@@ -24,7 +23,7 @@ func main() {
 	tlsProviderFunc := api.VaultPluginTLSProvider(tlsConfig)
 
 	if err := plugin.Serve(&plugin.ServeOpts{
-		BackendFactoryFunc: harbor.Factory,
+		BackendFactoryFunc: registry.Factory,
 		TLSProviderFunc:    tlsProviderFunc,
 	}); err != nil {
 		logger.Error("plugin shutting down", "error", err)
