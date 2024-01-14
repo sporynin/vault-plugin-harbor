@@ -39,24 +39,37 @@ func (b *harborBackend) robotAccountRevoke(ctx context.Context, req *logical.Req
 		return nil, fmt.Errorf("error getting Harbor client")
 	}
 
-	var account string
-	// We passed the account using InternalData from when we first created
-	// the secret. This is because the Harbor API uses the exact robot account name
-	// for revocation.
 	accountRaw, ok := req.Secret.InternalData["robot_account_name"]
 	if !ok {
 		return nil, fmt.Errorf("robot_account_name is missing on the lease")
 	}
 
-	account, ok = accountRaw.(string)
+	// We passed the account using InternalData from when we first created
+	// the secret. This is because the Harbor API uses the exact robot account name
+	// for revocation.
+	account, ok := accountRaw.(string)
 	if !ok {
 		return nil, fmt.Errorf("unable convert robot_account_name")
 	}
 
 	if err := deleteRobotAccount(ctx, client, account); err != nil {
-		return nil, fmt.Errorf("error revoking robot account: %w", err)
+		b.Logger().Warn(fmt.Sprintf("error revoking robot account: %s", err))
 	}
 
+	roleNameRaw, ok := req.Secret.InternalData["role"]
+	if !ok {
+		return nil, fmt.Errorf("role is missing on the lease")
+	}
+
+	roleName, ok := roleNameRaw.(string)
+	if !ok {
+		return nil, fmt.Errorf("unable convert role")
+	}
+
+	err = req.Storage.Delete(ctx, b.getRobotPath(roleName))
+	if err != nil {
+		b.Logger().Warn(fmt.Sprintf("error delete in storage: %s", err))
+	}
 	return nil, nil
 }
 
@@ -99,3 +112,57 @@ func (b *harborBackend) robotAccountRenew(ctx context.Context, req *logical.Requ
 
 	return resp, nil
 }
+
+func (b *harborBackend) setRobotToStorage(ctx context.Context, s logical.Storage, robot *harborRobotAccount) error {
+
+	entry, err := logical.StorageEntryJSON(b.getRobotPath(robot.Role), robot)
+	if err != nil {
+		return err
+	}
+
+	// Write to storage to view user inventory
+	err = s.Put(ctx, entry)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (b *harborBackend) getRobotFromStorage(ctx context.Context, s logical.Storage, robotAccountName string) (*harborRobotAccount, error) {
+	if robotAccountName == "" {
+		return nil, fmt.Errorf("missing username")
+	}
+
+	entry, err := s.Get(ctx, b.getRobotPath(robotAccountName))
+	if err != nil {
+		return nil, err
+	}
+
+	if entry == nil {
+		return nil, nil
+	}
+
+	var robot harborRobotAccount
+
+	if err := entry.DecodeJSON(&robot); err != nil {
+		return nil, err
+	}
+	return &robot, nil
+}
+
+func (b *harborBackend) getRobotPath(robotAccountName string) string {
+	return fmt.Sprintf("robots/%s", robotAccountName)
+}
+
+/*
+	for i, num := range b.Secrets {
+		b.Logger().Info(fmt.Sprintf("found: %s, num: %d", num.Type, i))
+	}
+	creds2, err := req.Storage.List(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("error creating Harbor robot account: %w", err)
+	}
+	for i, num := range creds2 {
+		b.Logger().Info(fmt.Sprintf("found: %s, num: %d", num, i))
+	}
+*/

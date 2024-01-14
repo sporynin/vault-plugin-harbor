@@ -26,9 +26,21 @@ based on a particular role.`
 // harborRobotAccount defines a secret for the Harbor token
 type harborRobotAccount struct {
 	ID        int64  `json:"robot_account_id"`
+	Role      string `json:"robot_role_name"`
 	Name      string `json:"robot_account_name"`
 	Secret    string `json:"robot_account_secret"`
 	AuthToken string `json:"robot_account_auth_token"`
+}
+
+func (robotAccount *harborRobotAccount) toResponseData() map[string]interface{} {
+	respData := map[string]interface{}{
+		"robot_account_id":         robotAccount.ID,
+		"robot_role_name":          robotAccount.Role,
+		"robot_account_name":       robotAccount.Name,
+		"robot_account_secret":     robotAccount.Secret,
+		"robot_account_auth_token": robotAccount.AuthToken,
+	}
+	return respData
 }
 
 // pathCreds extends the Vault API with a `/creds`
@@ -85,33 +97,29 @@ func (b *harborBackend) createCreds(
 		displayName = fmt.Sprintf("%s.", dn)
 	}
 	//logger := hclog.New(&hclog.LoggerOptions{})
-	for i, num := range b.Secrets {
-		b.Logger().Info(fmt.Sprintf("found: %s, num: %d", num.Type, i))
-	}
-	creds2, err := req.Storage.List(ctx, "")
-	if err != nil {
-		return nil, fmt.Errorf("error creating Harbor robot account: %w", err)
-	}
-	for i, num := range creds2 {
-		b.Logger().Info(fmt.Sprintf("found: %s, num: %d", num, i))
-	}
-	robotAccountName := fmt.Sprintf("vault.%s.%s%d", roleName, displayName, time.Now().UnixNano())
-
-	robotAccount, err := b.createRobotAccount(ctx, req.Storage, robotAccountName, role)
+	robotAccount, err := b.getRobotFromStorage(ctx, req.Storage, roleName)
 	if err != nil {
 		return nil, err
 	}
+	if robotAccount == nil {
+		robotAccountName := fmt.Sprintf("vault.%s.%s%d", roleName, displayName, time.Now().UnixNano())
+		robotAccount, err = b.createRobotAccount(ctx, req.Storage, robotAccountName, roleName, role)
+		if err != nil {
+			return nil, err
+		}
+		err = b.setRobotToStorage(ctx, req.Storage, robotAccount)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	internalData := map[string]interface{}{
+		"role":               roleName,
+		"robot_account_name": robotAccount.Name,
+	}
 
 	// The response is divided into two objects (1) internal data and (2) data.
-	resp := b.Secret(harborRobotAccountType).Response(map[string]interface{}{
-		"robot_account_id":         robotAccount.ID,
-		"robot_account_name":       robotAccount.Name,
-		"robot_account_secret":     robotAccount.Secret,
-		"robot_account_auth_token": robotAccount.AuthToken,
-	}, map[string]interface{}{
-		"role":               roleName,
-		"robot_account_name": robotAccountName,
-	})
+	resp := b.Secret(harborRobotAccountType).Response(robotAccount.toResponseData(), internalData)
 
 	if role.TTL > 0 {
 		resp.Secret.TTL = role.TTL
@@ -129,6 +137,7 @@ func (b *harborBackend) createRobotAccount(
 	ctx context.Context,
 	s logical.Storage,
 	robotName string,
+	roleName string,
 	roleEntry *harborRoleEntry,
 ) (*harborRobotAccount, error) {
 	client, err := b.getClient(ctx, s)
@@ -156,6 +165,7 @@ func (b *harborBackend) createRobotAccount(
 
 	robotAccount := &harborRobotAccount{
 		ID:        robotCreated.ID,
+		Role:      roleName,
 		Name:      robotCreated.Name,
 		Secret:    robotCreated.Secret,
 		AuthToken: base64.StdEncoding.EncodeToString([]byte(robotToken)),

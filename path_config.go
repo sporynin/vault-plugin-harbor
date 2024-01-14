@@ -105,7 +105,9 @@ func (b *harborBackend) pathConfigRead(ctx context.Context, req *logical.Request
 	if err != nil {
 		return nil, err
 	}
-
+	if config == nil {
+		return nil, fmt.Errorf("no configuration found")
+	}
 	return &logical.Response{
 		Data: map[string]interface{}{
 			"username": config.Username,
